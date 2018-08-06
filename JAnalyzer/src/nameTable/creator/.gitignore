@@ -1,0 +1,13 @@
+/BlockASTVisitor.class
+/BlockDefinitionASTVisitor.class
+/BlockReferenceASTVisitor.class
+/CompilationUnitFile.class
+/ExpressionASTVisitor.class
+/ExpressionDefinitionASTVisitor.class
+/ExpressionReferenceASTVisitor.class
+/ImportedTypeManager.class
+/NameDefinitionCreator.class
+/NameReferenceCreator.class
+/NameTableCreator.class
+/TypeASTVisitor.class
+/TypeDeclarationASTVisitor.class

@@ -1,0 +1,40 @@
+2016/12/27
+
+按文档完成重构 sourceCodeAST 这个程序包以及名字表相关的程序包
+
+
+2016/12/27-2017/1/9
+
+1. 修复 NameTableManager 中函数 NameDefinition findDefinitionById(String nameDefinitionId) 的错误；
+
+2. 将枚举 NameScopeKind 中的 NSK_TYPE 分为 NSK_DETAILED_TYPE  和 NSK_ENUM_TYPE 以区分详细类型与枚举类型，这个修改涉及到很多已有的类。
+
+3. 实现了系统依赖图的生成。
+
+
+
+2017/08/12
+
+1. 类NameReference增加方法getResultTypeReference()，返回一个表达式的值类型可能的引用；
+
+2. 类NameReference增加方法getSubReferenceList()，返回其中包含的子引用。这样每个NameReference都有所谓的子引用列表和叶子引用列表，但这两个列表的严格定义仍需要进一步细化。
+
+
+2017/08/15-08/16
+
+1. 修改了涉及到类TypeParameterDefinition的一些方法，这个类增加字段TypeReference value 存储在解析(resolve)当前引用时的实际类属参数。类TypeParameterDefinition还增加了方法 matchTypeReference() 
+以匹配在形式类型参数范围内的形式类型参数名字的引用，这个方法在匹配时将返回字段 value（即当前实际类属参数） 所绑定的名字定义，从而可部分地解决类属类型绑定问题，例如，声明：
+List<String> obj; 对于方法 obj.get(1)，我们可知道其返回类型是 String，而非形式类型参数名字 E 这样的东西。
+
+我们是在返回一个名字引用的结果类型所绑定的类型名字定义时设置相应的实际类属参数，也即修改了类 NameReference 的 getResultTypeDefinition() 方法，当该名字引用的结果类型时一个参数化类型引用时 
+(ParameterizedTypeReference)，其中将给出实际类属参数（都是类型引用），那么在绑定的类型定义中应该有形式参数类型列表，这时我们将设置形式参数类型列表中的形式类型参数的 value 值，从而使得绑定 
+的类属类临时实例化其中的形式类型参数，从而在该类属类的作用域范围内解析方法调用或字段引用是，用到的形式类型参数将绑定为实际类型参数所绑定的类型定义。
+
+由于我们不可能将每个类属类看做模板，对于它的每个实际类属参数新建立一个类定义，因此我们使用了这种临时存储实际类属参数的解决方法，这种解决方法会多次重复设置实际类属参数，而且不能保证所设置
+的实际类属参数就是马上要解析的方法调用和字段引用所声明的（我们不能严格证明，但从初步测试的结果看，没有发现反例）。还有一个明显的问题是，当不知道是通过哪个对象调用方法和字段时（例如在类属类
+声明的作用域直接调用方法和引用字段时），可能形式类型参数名的使用绑定为上一次设置的实际类型参数所绑定的类型定义（合理的结果应该形式类型参数本身，或者Object？）
+
+2017/08/23
+
+1. 修改了控制流图的生成，将StatementCFGCreator 改为抽象类，以及ExecutionPointFactory中的所有方法改为非静态方法，以便能够扩展这些类提供更多不同类型（包含不同信息的）可执行点类。
+
