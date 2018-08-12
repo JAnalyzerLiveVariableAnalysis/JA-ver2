@@ -38,7 +38,7 @@ import util.Debug;
 public class TestCFGCreator {
 
 	public static void main(String[] args) {
-		String rootPath = "/Users/merlyn/Study/java_code/JAnalyzer/";
+		String rootPath = "/Users/merlyn/git/JA-ver2/JAnalyzer/";
 		
 		String path = rootPath + "src/Test.java";
 		String result = rootPath + "result.txt";

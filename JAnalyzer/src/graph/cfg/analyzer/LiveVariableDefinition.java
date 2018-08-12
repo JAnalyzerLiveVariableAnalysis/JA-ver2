@@ -5,33 +5,34 @@ import nameTable.nameDefinition.NameDefinition;
 import nameTable.nameReference.NameReference;
 
 public class LiveVariableDefinition {
-//	protected NameDefinition name = null;
-//	protected NameReference value = null;
-//	protected ExecutionPoint node = null;
-	protected String variable = null;
+	protected NameReference reference = null;
+	protected NameDefinition definition = null;
+	protected ExecutionPoint node = null;
 
-	
-//	public LiveVariableDefinition(ExecutionPoint node, NameDefinition name, NameReference value, String variable) {
-//		this.node = node;
-//		this.name = name;
-//		this.value = value;
-	public LiveVariableDefinition(String variable) {
-		this.variable = variable;
+	public LiveVariableDefinition(NameReference reference, NameDefinition definition, ExecutionPoint node) {
+		this.reference = reference;
+		this.definition = definition;
+		this.node = node;
 	}
 
-//	public NameDefinition getName() {
-//		return name;
-//	}
-//	
-//	public NameReference getValue() {
-//		return value;
-//	}
-//	
-//	public ExecutionPoint getNode() {
-//		return node;
-//	}
-//	
-	public String getVariable() {
-		return variable;
+	public NameReference getReference() {
+		return reference;
+	}
+	
+	public NameDefinition getDefinition() {
+		return definition;
+	}
+	
+	public ExecutionPoint getNode() {
+		return node;
+	}
+	
+	public boolean isEqual(LiveVariableDefinition variableDefinition) {
+		if (reference.equals(variableDefinition.getReference()) &&
+				definition.equals(variableDefinition.getDefinition()) &&
+				node.equals(variableDefinition.getNode())) {
+			return true;
+		}
+		return false;
 	}
 }

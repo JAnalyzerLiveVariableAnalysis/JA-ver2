@@ -341,7 +341,7 @@ class DemoMenuCreator {
 				}
 				sourceText.setText(fileOpener.getFileContentsWithLineNumber());
 				
-				String path = "/Users/merlyn/Study/java_code/JAnalyzer/template.java";
+				String path = "/Users/merlyn/git/JA-ver2/JAnalyzer/template.java";
 				File file = new File(path);
 				FileWriter fileWriter = null;
 				try {
