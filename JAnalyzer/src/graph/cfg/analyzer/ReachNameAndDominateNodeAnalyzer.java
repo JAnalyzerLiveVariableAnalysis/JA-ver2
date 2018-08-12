@@ -35,7 +35,7 @@ public class ReachNameAndDominateNodeAnalyzer {
 
 		setReachNameAndDominateNodeRecorder(currentCFG);
 		ReachNameAnalyzer.reachNameAnalysis(nameTable, unitRecorder, method, currentCFG);
-		DominateNodeAnalyzer.dominateNodeAnalysis(currentCFG, method);
+		//DominateNodeAnalyzer.dominateNodeAnalysis(currentCFG, method);  不调用这个方法则只进行定值到达分析
 		
 		return currentCFG;
 	}
