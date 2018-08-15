@@ -148,7 +148,6 @@ public class LiveVariableAnalyzer {
 		}
 	}
 	
-	
 	@SuppressWarnings("unchecked")
 	// get Def[n] and Use[n] for all nodes
 	static void initializeDefAndUseVariableInAllNodes(NameTableManager manager, CompilationUnitRecorder unitRecorder, MethodDefinition method, ControlFlowGraph currentCFG) {
@@ -292,7 +291,6 @@ public class LiveVariableAnalyzer {
 		return output;
 	}
 	
-	
 	// output formatted LiveIn and LiveOut variable for all execution point
 	public static String outPutLiveInAndOutVariable(ControlFlowGraph controlFlowGraph) {
 		List<GraphNode> nodeList = controlFlowGraph.getAllNodes();
@@ -323,7 +321,6 @@ public class LiveVariableAnalyzer {
 		
 		return output;
 	}
-	
 	
 	public static String outPutAllInfo(ControlFlowGraph controlFlowGraph) {
 		List<GraphNode> nodeList = controlFlowGraph.getAllNodes();
@@ -410,7 +407,7 @@ public class LiveVariableAnalyzer {
 	
 	static boolean isContain(List<LiveVariableDefinition> list, LiveVariableDefinition definition) {
 		for (LiveVariableDefinition definition2 : list) {
-			if (definition.getVariable().equals(definition2.getVariable()))
+			if (definition.isEqual(definition2))
 				return true;
 		}
 		return false;

@@ -15,9 +15,8 @@ public class LiveVariableRecorder implements ILiveVariableRecorder {
 	public boolean addUseVariable(LiveVariableDefinition variable) {
 		if (UseVariableList == null)
 			UseVariableList = new LinkedList<LiveVariableDefinition>();
-		for (LiveVariableDefinition var : UseVariableList) {
-			if (var.getVariable().equals(variable.getVariable()))
-				return false;
+		if (isContain(UseVariableList, variable)) {
+			return false;
 		}
 		UseVariableList.add(variable);
 		return true;
@@ -27,9 +26,8 @@ public class LiveVariableRecorder implements ILiveVariableRecorder {
 	public boolean addDefVariable(LiveVariableDefinition variable) {
 		if (DefVariableList == null)
 			DefVariableList = new LinkedList<LiveVariableDefinition>();
-		for (LiveVariableDefinition var : DefVariableList) {
-			if (var.getVariable().equals(variable.getVariable()))
-				return false;
+		if (isContain(DefVariableList, variable)) {
+			return false;
 		}
 		DefVariableList.add(variable);
 		return true;
@@ -53,10 +51,8 @@ public class LiveVariableRecorder implements ILiveVariableRecorder {
 	public boolean addLiveInVariable(LiveVariableDefinition variable) {
 		if (LiveInVariableList == null)
 			LiveInVariableList = new LinkedList<LiveVariableDefinition>();
-		for (LiveVariableDefinition definition : LiveInVariableList) {
-			if (definition.getVariable().equals(variable.getVariable())) {
-				return false;
-			}
+		if (isContain(LiveInVariableList, variable)) {
+			return false;
 		}
 		LiveInVariableList.add(variable);
 		return true;
@@ -66,10 +62,8 @@ public class LiveVariableRecorder implements ILiveVariableRecorder {
 	public boolean addLiveOutVariable(LiveVariableDefinition variable) {
 		if (LiveOutVariableList == null)
 			LiveOutVariableList = new LinkedList<LiveVariableDefinition>();
-		for (LiveVariableDefinition definition : LiveOutVariableList) {
-			if (definition.getVariable().equals(variable.getVariable())) {
-				return false;
-			}
+		if (isContain(LiveOutVariableList, variable)) {
+			return false;
 		}
 		LiveOutVariableList.add(variable);
 		return true;
@@ -91,7 +85,7 @@ public class LiveVariableRecorder implements ILiveVariableRecorder {
 	
 	public boolean removeLiveInVariable(LiveVariableDefinition variable) {
 		for (LiveVariableDefinition definition : LiveInVariableList) {
-			if (definition.getVariable().equals(variable.getVariable())) {
+			if (definition.isEqual(variable)) {
 				LiveInVariableList.remove(definition);
 				return true;
 			}
@@ -101,7 +95,7 @@ public class LiveVariableRecorder implements ILiveVariableRecorder {
 	
 	public boolean removeLiveOutVariable(LiveVariableDefinition variable) {
 		for (LiveVariableDefinition definition : LiveOutVariableList) {
-			if (definition.getVariable().equals(variable.getVariable())) {
+			if (definition.isEqual(variable)) {
 				LiveOutVariableList.remove(definition);
 				return true;
 			}
@@ -119,5 +113,13 @@ public class LiveVariableRecorder implements ILiveVariableRecorder {
 		if (LiveInVariableList == null)
 			LiveInVariableList = new LinkedList<LiveVariableDefinition>();
 		LiveInVariableList.clear();
+	}
+	
+	static boolean isContain(List<LiveVariableDefinition> VarList, LiveVariableDefinition Var) {
+		for (LiveVariableDefinition definition : VarList) {
+			if (Var.isEqual(definition))
+				return true;
+		}
+		return false;
 	}
 }
