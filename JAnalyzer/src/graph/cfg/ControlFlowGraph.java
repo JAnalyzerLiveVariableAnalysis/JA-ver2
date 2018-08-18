@@ -4,10 +4,16 @@ import graph.basic.AbstractGraph;
 import graph.basic.GraphEdge;
 import graph.basic.GraphNode;
 import graph.basic.GraphUtil;
+import graph.cfg.analyzer.ReachNameAnalyzer;
+import graph.cfg.analyzer.ReachNameDefinition;
+import graph.cfg.analyzer.ReachNameRecorder;
 import graph.cfg.creator.ExecutionPointFactory;
+import nameTable.nameDefinition.NameDefinition;
+import nameTable.nameReference.NameReference;
 
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.util.List;
 
 import org.eclipse.jdt.core.dom.CompilationUnit;
 import org.eclipse.jdt.core.dom.MethodDeclaration;
@@ -200,8 +206,9 @@ public class ControlFlowGraph extends AbstractGraph implements CFGNode {
 	 * in dot language, and can be used to visualized the graph use Graphviz tools.
 	 * @param out : the output text file, which should be opened
 	 */
+	
 	public void simplyWriteToDotFile(PrintWriter output) throws IOException {
-		final int MAX_LABEL_LEN = 30;
+		final int MAX_LABEL_LEN = 300;
 		
 		String graphId = GraphUtil.getLegalToken(getId());
 		output.println("digraph " + graphId + " {");
@@ -238,6 +245,7 @@ public class ControlFlowGraph extends AbstractGraph implements CFGNode {
 			label = label.replace("\r", "");
 			label = label.replace("\n", "");
 			output.println("    " + nodeId + "[label = \"[" + node.getId() + "]" + label + "\", shape = " + nodeShape + "]");
+			
 		}
 		for (GraphEdge edge : edges) {
 			String label = edge.getLabel();
@@ -275,5 +283,137 @@ public class ControlFlowGraph extends AbstractGraph implements CFGNode {
 		output.println("};");
 		output.println();
 		output.flush();
-	}	
+	}
+	
+	//定值到达分析专用的writeToDot函数
+	public void simplyWriteToDotFileFixedValue(PrintWriter output) throws IOException {
+		final int MAX_LABEL_LEN = 1200;
+		
+		String graphId = GraphUtil.getLegalToken(getId());
+		output.println("digraph " + graphId + " {");
+		for (GraphNode currentNode : nodes) {
+			CFGNode node = (CFGNode)currentNode;
+			
+			String label = node.getDescription();
+			if (label == null || label.trim().equals("")) label = node.getLabel();
+			
+			String nodeId = "node" + GraphUtil.getLegalToken(node.getId());
+			String nodeShape = "box";
+			// Set the special id and shape for start, normal and abnormal end, predicate and other virtual nodes
+			if (node.isAbnormalEnd()) {
+				nodeId = methodName + "_ABNORMAL_END";
+				label = nodeId;
+				nodeShape = "tripleoctagon";
+			} else if (node.isNormalEnd()) {
+				nodeId = methodName + "_END";
+				label = nodeId;
+				nodeShape = "octagon";
+			} else if (node.isStart()) {
+				nodeId = methodName + "_START";
+				label = nodeId;
+				nodeShape = "octagon";
+			} else if (node.isVirtual()) {
+				nodeShape = "hexagon";
+			} else if (node.isPredicate()) {
+				nodeShape = "diamond";
+			}
+			label += "  ";
+
+				if (currentNode instanceof ExecutionPoint) {
+					ExecutionPoint eNode = (ExecutionPoint)currentNode;
+					ReachNameRecorder recorder = (ReachNameRecorder)eNode.getFlowInfoRecorder();
+					List<ReachNameDefinition> definedNameList = recorder.getReachNameList();
+					int countAnalyze = 0;
+					for (ReachNameDefinition definedName : definedNameList) {
+						NameDefinition name = definedName.getName();
+						NameReference value = definedName.getValue();
+						countAnalyze++;
+						if (definedName.getValue() != null) {
+							label += "\n";
+							label += "Name "+ countAnalyze +":    ";
+							//output.println("在节点ID为" + "[" + graphNode.getId() + "]" + "的CFG节点\t" + "对" + name.getSimpleName() + "名字定义"+ "\t" + "使用" + value.toSimpleString() + "表达式来定值" + "\t[" + name.getLocation() + "]\t[" + value.getLocation() + "]");
+							label += ("nodeID:   " + "[" + currentNode.getId() + "]" + "   name definition:   " + name.getSimpleName() + "   value:   " + value.toSimpleString() + "   nameLocation:   "+ "[" + name.getLocation() + "]" + "   valueLocation:   " + "[" +value.getLocation() + "]" +"\n");
+						} else {
+							label += "\n";
+							label += "Name "+ countAnalyze +":    ";
+							//output.println("[" + currentNode.getId() + "]\t" + definedName.getName().getSimpleName() + "\t~~\t[" + name.getLocation() + "]\t~~");
+							label += ("nodeID:   " + "[" + currentNode.getId() + "]" + "   name definition:   " + definedName.getName().getSimpleName() + "   nameLocation:   " + "\t~~\t[" + name.getLocation() + "]\t~~"+"\n");
+							//label += ("该名字定义无对应定值表达式\n\n");
+						}
+						//进行根源定值到达分析
+						label += ("    ");
+						label += ("Root Analysis: ");
+						
+						if(definedName.getValue() != null) {
+							//buffer.append("以下是对上述到达定值进行根源到达定值分析，若为空说明对应到达定值已经是根源到达定值\n\n");
+							int countRoot = 0;
+							List<ReachNameDefinition> exploredNameList = ReachNameAnalyzer.getRootReachNameDefinitionList(this, eNode, value);
+							for (ReachNameDefinition definedNameNew : exploredNameList) {
+								NameDefinition nameNew = definedNameNew.getName();
+								NameReference valueNew = definedNameNew.getValue();
+								if(definedNameNew.getValue() != null) {
+									countRoot++;
+									label += ("root: ");
+									label += (nameNew.getSimpleName()+valueNew.toSimpleString() +"nameLocation:   " + "["+nameNew.getLocation()+"]" + "valueLocation:   " + "["+valueNew.getLocation()+"]"+"\n"+"\n");
+								} else {
+									label += ("There is no corresponding value");
+									//buffer.append("[" + graphNode.getId() + "]\t" + definedName.getName().getSimpleName() + "\t~~\t[" + name.getLocation() + "]\t~~"+"\n"+"\n");
+								}
+							}
+							if(countRoot == 0) {
+								label += ("It is root now");
+							}
+						
+						}
+						label += ("   ");
+					}
+					//buffer.append("基于该可执行点" + "("+ graphNode.getId() +")" +"的定值到达分析结束" + "\n" + "\n" + "\n" + "\n");
+				}
+			
+			if (label.length() > MAX_LABEL_LEN) {
+				label = label.substring(0, MAX_LABEL_LEN) + "...";
+			}
+			label = label.replace('\"', '\'');
+			label = label.replace("\r", "");
+			//label = label.replace("\n", "");
+			output.println("    " + nodeId + "[label = \"[" + node.getId() + "]" + label + "\", shape = " + nodeShape + "]");
+		
+		}
+		for (GraphEdge edge : edges) {
+			String label = edge.getLabel();
+			CFGNode startNode = (CFGNode)edge.getStartNode();
+			CFGNode endNode = (CFGNode)edge.getEndNode();
+			
+			String startNodeId = "node" + GraphUtil.getLegalToken(startNode.getId());
+			String endNodeId = "node" + GraphUtil.getLegalToken(endNode.getId());
+			
+			// Set special id for start, normal and abnormal end nodes. These setting must be consistent with
+			// the setting in the above loop for the nodes of the CFG
+			if (startNode.isAbnormalEnd()) {
+				startNodeId = methodName + "_ABNORMAL_END";
+			} else if (startNode.isNormalEnd()) {
+				startNodeId = methodName + "_END";
+			} else if (startNode.isStart()) {
+				startNodeId = methodName + "_START";
+			}
+			
+			if (endNode.isAbnormalEnd()) {
+				endNodeId = methodName + "_ABNORMAL_END";
+			} else if (endNode.isNormalEnd()) {
+				endNodeId = methodName + "_END";
+			} else if (endNode.isStart()) {
+				endNodeId = methodName + "_START";
+			}
+
+			if (label != null) {
+				output.println("    " + startNodeId + "->" + endNodeId + "[label = \"" + label + "\"]");
+			} else {
+				output.println("    " + startNodeId + "->" + endNodeId);
+			}
+		}
+
+		output.println("};");
+		output.println();
+		output.flush();
+	}
 }

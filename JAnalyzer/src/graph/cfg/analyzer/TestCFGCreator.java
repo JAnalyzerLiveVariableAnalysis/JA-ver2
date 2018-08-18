@@ -307,10 +307,10 @@ public class TestCFGCreator {
 						NameDefinition name = definedName.getName();
 						NameReference value = definedName.getValue();
 						if (definedName.getValue() != null) {
-							output.println("在节点ID为" + "[" + graphNode.getId() + "]" + "的CFG节点\t" + "对" + name.getSimpleName() + "名字定义"+ "\t" + "使用" + value.toSimpleString() + "表达式来定值" + "\t[" + name.getLocation() + "]\t[" + value.getLocation() + "]");
+							//output.println("在节点ID为" + "[" + graphNode.getId() + "]" + "的CFG节点\t" + "对" + name.getSimpleName() + "名字定义"+ "\t" + "使用" + value.toSimpleString() + "表达式来定值" + "\t[" + name.getLocation() + "]\t[" + value.getLocation() + "]");
 							buffer.append("在节点ID为" + "[" + graphNode.getId() + "]" + "的CFG节点\t" + "对" + name.getSimpleName() + "名字定义"+ "\t" + "使用" + value.toSimpleString() + "表达式来定值" + "\t" + "名字定义位置" + "[" + name.getLocation() + "]" + "\t"+ "表达式位置" + "["  + value.getLocation() + "]" +"\n");
 						} else {
-							output.println("[" + graphNode.getId() + "]\t" + definedName.getName().getSimpleName() + "\t~~\t[" + name.getLocation() + "]\t~~");
+							//output.println("[" + graphNode.getId() + "]\t" + definedName.getName().getSimpleName() + "\t~~\t[" + name.getLocation() + "]\t~~");
 							buffer.append("[" + graphNode.getId() + "]\t" + definedName.getName().getSimpleName() + "\t~~\t[" + name.getLocation() + "]\t~~"+"\n");
 							buffer.append("该名字定义无对应定值表达式\n\n");
 						}
@@ -345,21 +345,23 @@ public class TestCFGCreator {
 					buffer.append("Found none execution point with defined name node!"+"\n");
 				}
 			}
-			nodeList.clear(); //清除 以便下一次循环重新加载nodeList
 			
-			output.println();
-			output.println();
+			
+			//output.println();
+			//output.println();
 			
 			buffer.append("\n");
 			try {
-				cfg.simplyWriteToDotFile(output);
+				cfg.simplyWriteToDotFileFixedValue(output);
 			} catch (Exception exc) {
 				exc.printStackTrace();
 			}
+			
+			nodeList.clear(); //清除 以便下一次循环重新加载nodeList
 		}
 		
 		Debug.time("After Create " + totalCFGS + " CFGs.....");
-		output.println();
+		//output.println();
 		return buffer.toString();
 	}
 	
@@ -397,7 +399,7 @@ public class TestCFGCreator {
 		Debug.setStart("Begin creating CFG for method " + maxMethod.getUniqueId() + ", " + maxLineNumber + " lines...");
 		buffer.append("Begin creating CFG for method " + maxMethod.getUniqueId() + ", " + maxLineNumber + " lines..."+"\n");
 		
-		output.println("ExecutionPointId\tDefinedName\tValue\tNameLocation\tValueLocation");
+		//output.println("ExecutionPointId\tDefinedName\tValue\tNameLocation\tValueLocation");
 		buffer.append("ExecutionPointId\tDefinedName\tValue\tNameLocation\tValueLocation"+"\n");
 		
 		MethodDefinition method = maxMethod;
@@ -417,10 +419,10 @@ public class TestCFGCreator {
 					NameDefinition name = definedName.getName();
 					NameReference value = definedName.getValue();
 					if (definedName.getValue() != null) {
-						output.println("在节点ID为" + "[" + graphNode.getId() + "]" + "的CFG节点\t" + "对" + name.getSimpleName() + "名字定义"+ "\t" + "使用" + value.toSimpleString() + "表达式来定值" + "\t[" + name.getLocation() + "]\t[" + value.getLocation() + "]");
+						//output.println("在节点ID为" + "[" + graphNode.getId() + "]" + "的CFG节点\t" + "对" + name.getSimpleName() + "名字定义"+ "\t" + "使用" + value.toSimpleString() + "表达式来定值" + "\t[" + name.getLocation() + "]\t[" + value.getLocation() + "]");
 						buffer.append("在节点ID为" + "[" + graphNode.getId() + "]" + "的CFG节点\t" + "对" + name.getSimpleName() + "名字定义"+ "\t" + "使用" + value.toSimpleString() + "表达式来定值" + "\t" + "名字定义位置" + "[" + name.getLocation() + "]" + "\t"+ "表达式位置" + "["  + value.getLocation() + "]" +"\n");
 					} else {
-						output.println("[" + graphNode.getId() + "]\t" + definedName.getName().getSimpleName() + "\t~~\t[" + name.getLocation() + "]\t~~");
+						//output.println("[" + graphNode.getId() + "]\t" + definedName.getName().getSimpleName() + "\t~~\t[" + name.getLocation() + "]\t~~");
 						buffer.append("[" + graphNode.getId() + "]\t" + definedName.getName().getSimpleName() + "\t~~\t[" + name.getLocation() + "]\t~~"+"\n");
 						buffer.append("该名字定义无对应定值表达式\n\n");
 					}
@@ -449,18 +451,18 @@ public class TestCFGCreator {
 				}
 				buffer.append("基于该可执行点" + "("+ graphNode.getId() +")" +"的定值到达分析结束" + "\n" + "\n" + "\n" + "\n");
 			} else {
-				output.println(graphNode.getId() + "\t~~\t~~\t~~\t~~");
+				//output.println(graphNode.getId() + "\t~~\t~~\t~~\t~~");
 				System.out.println("Found none execution point with defined name node!");
 				buffer.append("Found none execution point with defined name node!"+"\n");
 			}
 		}
 		
-		output.println();
-		output.println();
+		//output.println();
+		//output.println();
 		buffer.append("\n");
 		
 		try {
-			cfg.simplyWriteToDotFile(output);
+			cfg.simplyWriteToDotFileFixedValue(output);
 		} catch (Exception exc) {
 			exc.printStackTrace();
 		}
