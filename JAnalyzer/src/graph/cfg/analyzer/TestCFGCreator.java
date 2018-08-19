@@ -3,6 +3,7 @@ package graph.cfg.analyzer;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.PrintWriter;
+import java.util.ArrayList;
 import java.util.List;
 
 import org.eclipse.jdt.core.dom.ASTNode;
@@ -271,6 +272,7 @@ public class TestCFGCreator {
 		}
 		Debug.time("After create " + methodList.size() + " CFGs.....");
 	}
+	
 	public static String testCreateCFGWithFileName(String path, PrintWriter output) {
 		int totalCFGS = 0;
 		StringBuffer buffer = new StringBuffer();
@@ -305,36 +307,64 @@ public class TestCFGCreator {
 						NameDefinition name = definedName.getName();
 						NameReference value = definedName.getValue();
 						if (definedName.getValue() != null) {
-							output.println("[" + graphNode.getId() + "]\t" + name.getSimpleName() + "\t" + value.toSimpleString() + "\t[" + name.getLocation() + "]\t[" + value.getLocation() + "]");
-							buffer.append("[" + graphNode.getId() + "]\t" + name.getSimpleName() + "\t" + value.toSimpleString() + "\t[" + name.getLocation() + "]\t[" + value.getLocation() + "]"+"\n");
+							//output.println("在节点ID为" + "[" + graphNode.getId() + "]" + "的CFG节点\t" + "对" + name.getSimpleName() + "名字定义"+ "\t" + "使用" + value.toSimpleString() + "表达式来定值" + "\t[" + name.getLocation() + "]\t[" + value.getLocation() + "]");
+							buffer.append("在节点ID为" + "[" + graphNode.getId() + "]" + "的CFG节点\t" + "对" + name.getSimpleName() + "名字定义"+ "\t" + "使用" + value.toSimpleString() + "表达式来定值" + "\t" + "名字定义位置" + "[" + name.getLocation() + "]" + "\t"+ "表达式位置" + "["  + value.getLocation() + "]" +"\n");
 						} else {
-							output.println("[" + graphNode.getId() + "]\t" + definedName.getName().getSimpleName() + "\t~~\t[" + name.getLocation() + "]\t~~");
+							//output.println("[" + graphNode.getId() + "]\t" + definedName.getName().getSimpleName() + "\t~~\t[" + name.getLocation() + "]\t~~");
 							buffer.append("[" + graphNode.getId() + "]\t" + definedName.getName().getSimpleName() + "\t~~\t[" + name.getLocation() + "]\t~~"+"\n");
+							buffer.append("该名字定义无对应定值表达式\n\n");
 						}
+						//进行根源定值到达分析
+						if(definedName.getValue() != null) {
+							//buffer.append("以下是对上述到达定值进行根源到达定值分析，若为空说明对应到达定值已经是根源到达定值\n\n");
+							int countRoot = 0;
+							List<ReachNameDefinition> exploredNameList = ReachNameAnalyzer.getRootReachNameDefinitionList(cfg, node, value);
+							for (ReachNameDefinition definedNameNew : exploredNameList) {
+								NameDefinition nameNew = definedNameNew.getName();
+								NameReference valueNew = definedNameNew.getValue();
+								if(definedNameNew.getValue() != null) {
+									countRoot++;
+									buffer.append("其根源到达定值为:\n");
+									buffer.append("名字定义:"+nameNew.getSimpleName()+"\t"+"定值表达式:"+valueNew.toSimpleString()+"\t"+"名字定义位置为:"+"["+nameNew.getLocation()+"]"+"\t"+"表达式位置为:"+"["+valueNew.getLocation()+"]"+"\n"+"\n");
+								} else {
+									buffer.append("根源到达定值的名字定义无对应表达式\n\n");
+									//buffer.append("[" + graphNode.getId() + "]\t" + definedName.getName().getSimpleName() + "\t~~\t[" + name.getLocation() + "]\t~~"+"\n"+"\n");
+								}
+							}
+							if(countRoot == 0) {
+								buffer.append("对应到达定值已经是根源到达定值\n\n");
+							}
+						
+						}
+						
 					}
+					buffer.append("基于该可执行点" + "("+ graphNode.getId() +")" +"的定值到达分析结束" + "\n" + "\n" + "\n" + "\n");
 				} else {
 					output.println(graphNode.getId() + "\t~~\t~~\t~~\t~~");
 					System.out.println("Found none execution point with defined name node!");
 					buffer.append("Found none execution point with defined name node!"+"\n");
 				}
 			}
-			nodeList.clear(); //清除 以便下一次循环重新加载nodeList
 			
-			output.println();
-			output.println();
+			
+			//output.println();
+			//output.println();
 			
 			buffer.append("\n");
 			try {
-				cfg.simplyWriteToDotFile(output);
+				cfg.simplyWriteToDotFileFixedValue(output);
 			} catch (Exception exc) {
 				exc.printStackTrace();
 			}
+			
+			nodeList.clear(); //清除 以便下一次循环重新加载nodeList
 		}
 		
 		Debug.time("After Create " + totalCFGS + " CFGs.....");
-		output.println();
+		//output.println();
 		return buffer.toString();
 	}
+	
 	public static String testCreateCFGWithReachName(String path, PrintWriter output) {
 		StringBuffer buffer = new StringBuffer();
 		
@@ -369,7 +399,7 @@ public class TestCFGCreator {
 		Debug.setStart("Begin creating CFG for method " + maxMethod.getUniqueId() + ", " + maxLineNumber + " lines...");
 		buffer.append("Begin creating CFG for method " + maxMethod.getUniqueId() + ", " + maxLineNumber + " lines..."+"\n");
 		
-		output.println("ExecutionPointId\tDefinedName\tValue\tNameLocation\tValueLocation");
+		//output.println("ExecutionPointId\tDefinedName\tValue\tNameLocation\tValueLocation");
 		buffer.append("ExecutionPointId\tDefinedName\tValue\tNameLocation\tValueLocation"+"\n");
 		
 		MethodDefinition method = maxMethod;
@@ -389,26 +419,50 @@ public class TestCFGCreator {
 					NameDefinition name = definedName.getName();
 					NameReference value = definedName.getValue();
 					if (definedName.getValue() != null) {
-						output.println("[" + graphNode.getId() + "]\t" + name.getSimpleName() + "\t" + value.toSimpleString() + "\t[" + name.getLocation() + "]\t[" + value.getLocation() + "]");
-						buffer.append("[" + graphNode.getId() + "]\t" + name.getSimpleName() + "\t" + value.toSimpleString() + "\t[" + name.getLocation() + "]\t[" + value.getLocation() + "]"+"\n");
+						//output.println("在节点ID为" + "[" + graphNode.getId() + "]" + "的CFG节点\t" + "对" + name.getSimpleName() + "名字定义"+ "\t" + "使用" + value.toSimpleString() + "表达式来定值" + "\t[" + name.getLocation() + "]\t[" + value.getLocation() + "]");
+						buffer.append("在节点ID为" + "[" + graphNode.getId() + "]" + "的CFG节点\t" + "对" + name.getSimpleName() + "名字定义"+ "\t" + "使用" + value.toSimpleString() + "表达式来定值" + "\t" + "名字定义位置" + "[" + name.getLocation() + "]" + "\t"+ "表达式位置" + "["  + value.getLocation() + "]" +"\n");
 					} else {
-						output.println("[" + graphNode.getId() + "]\t" + definedName.getName().getSimpleName() + "\t~~\t[" + name.getLocation() + "]\t~~");
+						//output.println("[" + graphNode.getId() + "]\t" + definedName.getName().getSimpleName() + "\t~~\t[" + name.getLocation() + "]\t~~");
 						buffer.append("[" + graphNode.getId() + "]\t" + definedName.getName().getSimpleName() + "\t~~\t[" + name.getLocation() + "]\t~~"+"\n");
+						buffer.append("该名字定义无对应定值表达式\n\n");
+					}
+					//进行根源定值到达分析
+					if(definedName.getValue() != null) {
+						//buffer.append("以下是对上述到达定值进行根源到达定值分析，若为空说明对应到达定值已经是根源到达定值\n\n");
+						int countRoot = 0;
+						List<ReachNameDefinition> exploredNameList = ReachNameAnalyzer.getRootReachNameDefinitionList(cfg, node, value);
+						for (ReachNameDefinition definedNameNew : exploredNameList) {
+							NameDefinition nameNew = definedNameNew.getName();
+							NameReference valueNew = definedNameNew.getValue();
+							if(definedNameNew.getValue() != null) {
+								countRoot++;
+								buffer.append("其根源到达定值为:\n");
+								buffer.append("名字定义:"+nameNew.getSimpleName()+"\t"+"定值表达式:"+valueNew.toSimpleString()+"\t"+"名字定义位置为:"+"["+nameNew.getLocation()+"]"+"\t"+"表达式位置为:"+"["+valueNew.getLocation()+"]"+"\n"+"\n");
+							} else {
+								buffer.append("根源到达定值的名字定义无对应表达式\n\n");
+								//buffer.append("[" + graphNode.getId() + "]\t" + definedName.getName().getSimpleName() + "\t~~\t[" + name.getLocation() + "]\t~~"+"\n"+"\n");
+							}
+						}
+						if(countRoot == 0) {
+							buffer.append("对应到达定值已经是根源到达定值\n\n");
+						}
+					
 					}
 				}
+				buffer.append("基于该可执行点" + "("+ graphNode.getId() +")" +"的定值到达分析结束" + "\n" + "\n" + "\n" + "\n");
 			} else {
-				output.println(graphNode.getId() + "\t~~\t~~\t~~\t~~");
+				//output.println(graphNode.getId() + "\t~~\t~~\t~~\t~~");
 				System.out.println("Found none execution point with defined name node!");
 				buffer.append("Found none execution point with defined name node!"+"\n");
 			}
 		}
 		
-		output.println();
-		output.println();
+		//output.println();
+		//output.println();
 		buffer.append("\n");
 		
 		try {
-			cfg.simplyWriteToDotFile(output);
+			cfg.simplyWriteToDotFileFixedValue(output);
 		} catch (Exception exc) {
 			exc.printStackTrace();
 		}
