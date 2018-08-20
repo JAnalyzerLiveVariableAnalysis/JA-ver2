@@ -12,6 +12,7 @@ import java.io.OutputStream;
 import java.awt.*;
 import java.awt.event.*;
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.FileReader;
 import java.io.FileWriter;
@@ -25,6 +26,8 @@ import graph.cfg.creator.CFGCreator;
 import graph.cfg.analyzer.TestCFGCreator;
 import javax.swing.*;
 import util.Debug;
+
+import org.eclipse.jdt.annotation.NonNull;
 import org.eclipse.jdt.core.dom.CompilationUnit;
 
 import graph.basic.GraphNode;
@@ -343,6 +346,7 @@ class DemoMenuCreator {
 				
 				String path = "/Users/merlyn/git/JA-ver2/JAnalyzer/template.java";
 				File file = new File(path);
+				@NonNull
 				FileWriter fileWriter = null;
 				try {
 					fileWriter = new FileWriter(file);
@@ -367,13 +371,30 @@ class DemoMenuCreator {
 				
 				String output = "";
 				
+				PrintWriter result = null;
+				
 				for (NameDefinition method : methodList) {
 					MethodDefinition methodDefinition = (MethodDefinition)method;
 					output += methodDefinition.toString() + "\n";
 					ControlFlowGraph controlFlowGraph = LiveVariableAnalyzer.create(tableManager, methodDefinition);
 					
-					if (controlFlowGraph != null)
+					if (controlFlowGraph != null) {
 						output += LiveVariableAnalyzer.outPutAllInfo(controlFlowGraph);
+						
+						try {
+							result = new PrintWriter(new FileOutputStream(new File("/Users/merlyn/git/JA-ver2/JAnalyzer/" + methodDefinition.getSimpleName() + ".dot")));
+						} catch (FileNotFoundException e2) {
+							// TODO Auto-generated catch block
+							e2.printStackTrace();
+						}
+						
+						try {
+							controlFlowGraph.writeLiveVariablesToFile(result);
+						} catch (IOException e1) {
+							// TODO Auto-generated catch block
+							e1.printStackTrace();
+						}
+					}
 				}
 				
 				liveVariableText.setText(output);

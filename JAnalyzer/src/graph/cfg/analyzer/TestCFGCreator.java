@@ -1,7 +1,9 @@
 package graph.cfg.analyzer;
 
 import java.io.File;
+import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
+import java.io.IOException;
 import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.List;
@@ -216,14 +218,31 @@ public class TestCFGCreator {
 		tableManager.accept(visitor);
 		List<NameDefinition> methodList = visitor.getResult();
 		
+		PrintWriter result = null;
+		
 		for (NameDefinition method : methodList) {
 			MethodDefinition methodDefinition = (MethodDefinition)method;
 			System.out.println(methodDefinition.toString() + "\n");
 			ControlFlowGraph controlFlowGraph = LiveVariableAnalyzer.create(tableManager, methodDefinition);
 			
 			if (controlFlowGraph != null) {
-				String info = LiveVariableAnalyzer.outPutLiveInAndOutVariable(controlFlowGraph);
+				//String info = LiveVariableAnalyzer.outPutDefAndUseVariable(controlFlowGraph);
+				String info = LiveVariableAnalyzer.outPutAllInfo(controlFlowGraph);
 				System.out.println(info);
+				
+				try {
+					result = new PrintWriter(new FileOutputStream(new File("/Users/merlyn/git/JA-ver2/JAnalyzer/" + methodDefinition.getSimpleName() + ".dot")));
+				} catch (FileNotFoundException e2) {
+					// TODO Auto-generated catch block
+					e2.printStackTrace();
+				}
+				
+				try {
+					controlFlowGraph.writeLiveVariablesToFile(result);
+				} catch (IOException e1) {
+					// TODO Auto-generated catch block
+					e1.printStackTrace();
+				}
 			}
 		}
 	}

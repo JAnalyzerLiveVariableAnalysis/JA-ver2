@@ -17,6 +17,7 @@ public interface ILiveVariableRecorder extends IFlowInfoRecorder {
 	
 	public boolean removeLiveInVariable(LiveVariableDefinition variable);
 	public boolean removeLiveOutVariable(LiveVariableDefinition variable);
+	public boolean contains(List<LiveVariableDefinition> list, LiveVariableDefinition variableDefinition);
 	public void setLiveInEmpty();
 	public void setLiveOutEmpty();
 }

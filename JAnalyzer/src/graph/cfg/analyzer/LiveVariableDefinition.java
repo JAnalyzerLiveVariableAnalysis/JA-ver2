@@ -27,12 +27,31 @@ public class LiveVariableDefinition {
 		return node;
 	}
 	
-	public boolean isEqual(LiveVariableDefinition variableDefinition) {
-		if (reference.equals(variableDefinition.getReference()) &&
-				definition.equals(variableDefinition.getDefinition()) &&
-				node.equals(variableDefinition.getNode())) {
-			return true;
+	public boolean equals(LiveVariableDefinition variableDefinition) {
+		if (variableDefinition == null) {
+			return false;
 		}
-		return false;
+		return compareDefinition(definition, variableDefinition.getDefinition());
+	}
+	
+	static boolean compareReference(NameReference reference1, NameReference reference2) {
+		if (reference1 != null && reference2 != null) {
+			return reference1.equals(reference2);
+		}
+		return reference1 == null && reference2 == null;
+	}
+	
+	static boolean compareDefinition(NameDefinition definition1, NameDefinition definition2) {
+		if (definition1 != null && definition2 != null) {
+			return definition1.equals(definition2);
+		}
+		return definition1 == null && definition2 == null;
+	}
+	
+	static boolean compareNode(ExecutionPoint node1, ExecutionPoint node2) {
+		if (node1 != null && node2 != null) {
+			return node1.equals(node2);
+		}
+		return node1 == null && node2 == null;
 	}
 }

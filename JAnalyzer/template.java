@@ -1,6 +1,7 @@
 import java.util.ArrayList;
 import java.util.List;
 
+@SuppressWarnings("null")
 public class Test {
 
 	public static void main(String[] args) {
@@ -13,8 +14,11 @@ public class Test {
 		b = 15; // def{b} use{} in{a} out{a, b}
 		c = b + a + 20; // def{c} use{b, a} in{a, b} out{a}
 		d = a; // def{d} use{a} in{a} out{a, d}
-		for (int i = a; i < 10; i++) {
+		for (int i = a + b; i < b; i++) {
 			array.add(++i);
+		}
+		for (int i = b, k = 2; i < 20; i++) {
+			array.add(i);
 		}
 		for (Integer integer : array) {
 			System.out.print(integer + a);
