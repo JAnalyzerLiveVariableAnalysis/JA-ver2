@@ -15,7 +15,7 @@ public class LiveVariableRecorder implements ILiveVariableRecorder {
 	public boolean addUseVariable(LiveVariableDefinition variable) {
 		if (UseVariableList == null)
 			UseVariableList = new LinkedList<LiveVariableDefinition>();
-		if (isContain(UseVariableList, variable)) {
+		if (contains(UseVariableList, variable)) {
 			return false;
 		}
 		UseVariableList.add(variable);
@@ -26,7 +26,7 @@ public class LiveVariableRecorder implements ILiveVariableRecorder {
 	public boolean addDefVariable(LiveVariableDefinition variable) {
 		if (DefVariableList == null)
 			DefVariableList = new LinkedList<LiveVariableDefinition>();
-		if (isContain(DefVariableList, variable)) {
+		if (contains(DefVariableList, variable)) {
 			return false;
 		}
 		DefVariableList.add(variable);
@@ -51,7 +51,7 @@ public class LiveVariableRecorder implements ILiveVariableRecorder {
 	public boolean addLiveInVariable(LiveVariableDefinition variable) {
 		if (LiveInVariableList == null)
 			LiveInVariableList = new LinkedList<LiveVariableDefinition>();
-		if (isContain(LiveInVariableList, variable)) {
+		if (contains(LiveInVariableList, variable)) {
 			return false;
 		}
 		LiveInVariableList.add(variable);
@@ -62,7 +62,7 @@ public class LiveVariableRecorder implements ILiveVariableRecorder {
 	public boolean addLiveOutVariable(LiveVariableDefinition variable) {
 		if (LiveOutVariableList == null)
 			LiveOutVariableList = new LinkedList<LiveVariableDefinition>();
-		if (isContain(LiveOutVariableList, variable)) {
+		if (contains(LiveOutVariableList, variable)) {
 			return false;
 		}
 		LiveOutVariableList.add(variable);
@@ -83,21 +83,34 @@ public class LiveVariableRecorder implements ILiveVariableRecorder {
 		return LiveOutVariableList;
 	}
 	
-	public boolean removeLiveInVariable(LiveVariableDefinition variable) {
-		for (LiveVariableDefinition definition : LiveInVariableList) {
-			if (definition.isEqual(variable)) {
-				LiveInVariableList.remove(definition);
+	public boolean contains(List<LiveVariableDefinition> list, LiveVariableDefinition variableDefinition) {
+		for (LiveVariableDefinition definition : list) {
+			if (definition.equals(variableDefinition)) {
 				return true;
 			}
 		}
 		return false;
 	}
 	
+	public boolean removeLiveInVariable(LiveVariableDefinition variable) {
+		if (contains(LiveInVariableList, variable)) {
+			for (LiveVariableDefinition variableDefinition : LiveInVariableList) {
+				if (variableDefinition.equals(variable)) {
+					LiveInVariableList.remove(variableDefinition);
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+	
 	public boolean removeLiveOutVariable(LiveVariableDefinition variable) {
-		for (LiveVariableDefinition definition : LiveOutVariableList) {
-			if (definition.isEqual(variable)) {
-				LiveOutVariableList.remove(definition);
-				return true;
+		if (contains(LiveOutVariableList, variable)) {
+			for (LiveVariableDefinition variableDefinition : LiveOutVariableList) {
+				if (variableDefinition.equals(variable)) {
+					LiveOutVariableList.remove(variableDefinition);
+					return true;
+				}
 			}
 		}
 		return false;
@@ -113,13 +126,5 @@ public class LiveVariableRecorder implements ILiveVariableRecorder {
 		if (LiveInVariableList == null)
 			LiveInVariableList = new LinkedList<LiveVariableDefinition>();
 		LiveInVariableList.clear();
-	}
-	
-	static boolean isContain(List<LiveVariableDefinition> VarList, LiveVariableDefinition Var) {
-		for (LiveVariableDefinition definition : VarList) {
-			if (Var.isEqual(definition))
-				return true;
-		}
-		return false;
 	}
 }

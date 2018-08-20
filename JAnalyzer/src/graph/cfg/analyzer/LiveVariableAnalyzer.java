@@ -1,5 +1,7 @@
 package graph.cfg.analyzer;
 
+import java.awt.Frame;
+import java.io.PrintWriter;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -23,6 +25,7 @@ import org.eclipse.jdt.core.dom.VariableDeclarationFragment;
 import org.eclipse.jdt.core.dom.VariableDeclarationStatement;
 import org.eclipse.jdt.core.dom.Assignment.Operator;
 import org.eclipse.jdt.internal.compiler.ast.Argument;
+import org.eclipse.jdt.internal.core.util.PublicScanner;
 import org.eclipse.osgi.container.SystemModule;
 import graph.basic.GraphNode;
 import graph.cfg.ControlFlowGraph;
@@ -31,6 +34,7 @@ import graph.cfg.ExecutionPointType;
 import graph.cfg.creator.CFGCreator;
 import nameTable.NameTableManager;
 import nameTable.creator.ExpressionReferenceASTVisitor;
+import nameTable.creator.NameDefinitionCreator;
 import nameTable.creator.NameReferenceCreator;
 import nameTable.filter.NameDefinitionLocationFilter;
 import nameTable.filter.NameReferenceLocationFilter;
@@ -46,6 +50,7 @@ import nameTable.nameScope.NameScope;
 import nameTable.visitor.NameDefinitionVisitor;
 import nameTable.visitor.NameReferenceVisitor;
 import sourceCodeAST.CompilationUnitRecorder;
+import sourceCodeAST.SourceCodeFileSet;
 import sourceCodeAST.SourceCodeLocation;
 
 public class LiveVariableAnalyzer {
@@ -83,7 +88,6 @@ public class LiveVariableAnalyzer {
 	public static void liveVariableAnalysis(NameTableManager manager, CompilationUnitRecorder unitRecorder, MethodDefinition method, ControlFlowGraph currentCFG) {
 		// get Def[n] and Use[n] for for all nodes
 		initializeDefAndUseVariableInAllNodes(manager, unitRecorder, method, currentCFG);
-		
 		// compute LiveIn[n] and LiveOut[n]
 		boolean hasChanged = true;
 		while (hasChanged) {
@@ -95,6 +99,7 @@ public class LiveVariableAnalyzer {
 				
 				// LiveInList is in[n]
 				// LiveInList_ is in[n]'
+				// first set them equal
 				// if in[n] and in[n]' is different
 				// need iterate again
 				List<LiveVariableDefinition> LiveInList = currentRecorder.getLiveInVariableList();
@@ -140,7 +145,7 @@ public class LiveVariableAnalyzer {
 
 				// if in[n] == in[n]'
 				for (LiveVariableDefinition definition : LiveInList) {
-					if (!isContain(LiveInList_, definition)) {
+					if (!currentRecorder.contains(LiveInList_, definition)) {
 						hasChanged = true;
 					}
 				}
@@ -151,19 +156,17 @@ public class LiveVariableAnalyzer {
 	@SuppressWarnings("unchecked")
 	// get Def[n] and Use[n] for all nodes
 	static void initializeDefAndUseVariableInAllNodes(NameTableManager manager, CompilationUnitRecorder unitRecorder, MethodDefinition method, ControlFlowGraph currentCFG) {
-		ExecutionPoint startNode = (ExecutionPoint)currentCFG.getStartNode();
+		ExecutionPoint startNode = (ExecutionPoint)currentCFG.getStartNode(); 
 		ILiveVariableRecorder recorder = (ILiveVariableRecorder)startNode.getFlowInfoRecorder();
-		
+		// Add parameter definition to the defined name list of the start node. Note that its reference for definition is NULL!
 		List<VariableDefinition> parameterList = method.getParameterList();
-		
-		// parameter是传递的参数
 		if (parameterList != null) {
 			for (VariableDefinition parameter : parameterList) {
-				recorder.addDefVariable(new LiveVariableDefinition(parameter.getSimpleName()));
+				recorder.addDefVariable(new LiveVariableDefinition(null, parameter, startNode));
 			}
 		}
-		
-		// get Def[node]
+
+		// Initialize defined name in node if its ASTNode is assignment, variable declaration, prefix or postfix expression (++, --) 
 		List<GraphNode> nodeList = currentCFG.getAllNodes();
 		for (GraphNode graphNode : nodeList) {
 			ExecutionPoint node = (ExecutionPoint)graphNode;
@@ -175,315 +178,420 @@ public class LiveVariableAnalyzer {
 			if (astNode == null) continue;
 			
 			SourceCodeLocation startLocation = node.getStartLocation();
-			
+			SourceCodeLocation endLocation = node.getEndLocation();
 			int nodeType = astNode.getNodeType();
-			
 			if (nodeType == ASTNode.ASSIGNMENT) {
 				Assignment assignment = (Assignment)astNode;
 				Expression leftHandSide = assignment.getLeftHandSide();
-				Expression rightHandSide = assignment.getRightHandSide();
-				Operator operator = assignment.getOperator();
 				
-				NameReference leftReference = extractNameReferenceFromExpression(leftHandSide, manager, unitRecorder, startLocation);
-				NameReference rightReference = extractNameReferenceFromExpression(rightHandSide, manager, unitRecorder, startLocation);
-				
-				if (operator == Operator.PLUS_ASSIGN || operator == Operator.MINUS_ASSIGN) {
-					recorder.addDefVariable(new LiveVariableDefinition(leftReference.getName()));
-					recorder.addUseVariable(new LiveVariableDefinition(leftReference.getName()));
-				} else {
-					recorder.addDefVariable(new LiveVariableDefinition(leftReference.getName()));
+				NameScope currentScope = manager.getScopeOfLocation(startLocation);
+				NameReferenceCreator referenceCreator = new NameReferenceCreator(manager, true);
+				ExpressionReferenceASTVisitor visitor = new ExpressionReferenceASTVisitor(referenceCreator, unitRecorder, currentScope, true);
+				leftHandSide.accept(visitor);
+				NameReference leftReference = visitor.getResult();
+				if (leftReference.resolveBinding()) {
+					NameDefinition definition = extractLeftValueInReference(leftReference);
+					
+					Expression rightHandSide = assignment.getRightHandSide();
+					visitor.reset();
+					rightHandSide.accept(visitor);
+					NameReference rightReference = visitor.getResult();
+					
+					rightReference.resolveBinding();
+					recorder.addDefVariable(new LiveVariableDefinition(rightReference, definition, node));
+					
+					Operator operator = assignment.getOperator();
+					if (operator == Operator.MINUS_ASSIGN || operator == Operator.PLUS_ASSIGN
+							|| operator == Operator.TIMES_ASSIGN || operator == Operator.DIVIDE_ASSIGN) {
+						recorder.addUseVariable(new LiveVariableDefinition(rightReference, definition, node));
+					}
+					
+					List<LiveVariableDefinition> list = extractVariableFromReference(rightReference, node);
+					for (LiveVariableDefinition variable1 : list) {
+						recorder.addUseVariable(variable1);
+					}
 				}
+			} else if (nodeType == ASTNode.VARIABLE_DECLARATION_EXPRESSION) {
+				VariableDeclarationExpression variableDeclarationExpression = (VariableDeclarationExpression)astNode;
 				
-				List<String> variables = extractVariablesFromNameReference(rightReference);
-				for (String variable : variables) {
-					recorder.addUseVariable(new LiveVariableDefinition(variable));
+				NameDefinitionVisitor visitor = new NameDefinitionVisitor();
+				NameDefinitionLocationFilter filter = new NameDefinitionLocationFilter(startLocation, endLocation);
+				visitor.setFilter(filter);
+				method.accept(visitor);
+				List<NameDefinition> variableList = visitor.getResult();
+				@SuppressWarnings("unchecked")
+				List<VariableDeclarationFragment> fragmentList = variableDeclarationExpression.fragments();
+				for (VariableDeclarationFragment fragment : fragmentList) {
+					Expression initializer = fragment.getInitializer();
+					if (initializer == null) continue;
+					
+					for (NameDefinition variable : variableList) {
+						if (variable.getSimpleName().equals(fragment.getName().getIdentifier())) {
+							NameScope currentScope = manager.getScopeOfLocation(startLocation);
+							NameReferenceCreator referenceCreator = new NameReferenceCreator(manager, true);
+							ExpressionReferenceASTVisitor referenceVisitor = new ExpressionReferenceASTVisitor(referenceCreator, unitRecorder, currentScope, true);
+							initializer.accept(referenceVisitor);
+							NameReference valueReference = referenceVisitor.getResult();
+							
+							valueReference.resolveBinding();
+							recorder.addDefVariable(new LiveVariableDefinition(valueReference, variable, node));
+							List<LiveVariableDefinition> list = extractVariableFromReference(valueReference, node);
+							for (LiveVariableDefinition variable1 : list) {
+								recorder.addUseVariable(variable1);
+							}
+							break;
+						}
+					}
+				}
+			} else if (nodeType == ASTNode.VARIABLE_DECLARATION_FRAGMENT) {
+				VariableDeclarationFragment fragment = (VariableDeclarationFragment)astNode;
+				
+				NameDefinitionVisitor visitor = new NameDefinitionVisitor();
+				NameDefinitionLocationFilter filter = new NameDefinitionLocationFilter(startLocation, endLocation);
+				visitor.setFilter(filter);
+				method.accept(visitor);
+				List<NameDefinition> variableList = visitor.getResult();
+				
+				Expression initializer = fragment.getInitializer();
+				if (initializer == null) continue;
+				
+				for (NameDefinition variable : variableList) {
+					if (variable.getSimpleName().equals(fragment.getName().getIdentifier())) {
+						NameScope currentScope = manager.getScopeOfLocation(startLocation);
+						NameReferenceCreator referenceCreator = new NameReferenceCreator(manager, true);
+						ExpressionReferenceASTVisitor referenceVisitor = new ExpressionReferenceASTVisitor(referenceCreator, unitRecorder, currentScope, true);
+						initializer.accept(referenceVisitor);
+						NameReference valueReference = referenceVisitor.getResult();
+						
+						valueReference.resolveBinding();
+						recorder.addDefVariable(new LiveVariableDefinition(valueReference, variable, node));
+						List<LiveVariableDefinition> list = extractVariableFromReference(valueReference, node);
+						for (LiveVariableDefinition variable1 : list) {
+							recorder.addUseVariable(variable1);
+						}
+						break;
+					}
+				}
+			} else if (nodeType == ASTNode.VARIABLE_DECLARATION_STATEMENT) {
+				VariableDeclarationStatement variableDeclarationStatement = (VariableDeclarationStatement)astNode;
+				
+				NameDefinitionVisitor visitor = new NameDefinitionVisitor();
+				NameDefinitionLocationFilter filter = new NameDefinitionLocationFilter(startLocation, endLocation);
+				visitor.setFilter(filter);
+				method.accept(visitor);
+				List<NameDefinition> variableList = visitor.getResult();
+				
+				@SuppressWarnings("unchecked")
+				List<VariableDeclarationFragment> fragmentList = variableDeclarationStatement.fragments();
+				for (VariableDeclarationFragment fragment : fragmentList) {
+					Expression initializer = fragment.getInitializer();
+					if (initializer == null) continue;
+					
+					for (NameDefinition variable : variableList) {
+						if (variable.getSimpleName().equals(fragment.getName().getIdentifier())) {
+							NameScope currentScope = manager.getScopeOfLocation(startLocation);
+							NameReferenceCreator referenceCreator = new NameReferenceCreator(manager, true);
+							ExpressionReferenceASTVisitor referenceVisitor = new ExpressionReferenceASTVisitor(referenceCreator, unitRecorder, currentScope, true);
+							initializer.accept(referenceVisitor);
+							NameReference valueReference = referenceVisitor.getResult();
+							
+							valueReference.resolveBinding();
+							recorder.addDefVariable(new LiveVariableDefinition(valueReference, variable, node));
+							List<LiveVariableDefinition> list = extractVariableFromReference(valueReference, node);
+							for (LiveVariableDefinition variable1 : list) {
+								recorder.addUseVariable(variable1);
+							}
+							break;
+						}
+					}
 				}
 			} else if (nodeType == ASTNode.METHOD_INVOCATION) {
-				MethodInvocation invocation = (MethodInvocation)astNode;
-				List<Expression> arguments = invocation.arguments();
-				for (Expression argument : arguments) {
-					NameReference reference = extractNameReferenceFromExpression(argument, manager, unitRecorder, startLocation);
-					List<String> variables = extractVariablesFromNameReference(reference);
-					for (String variable : variables) {
-						recorder.addUseVariable(new LiveVariableDefinition(variable));
+				MethodInvocation methodInvocation = (MethodInvocation)astNode;
+				Expression expression = methodInvocation.getExpression();
+				Expression expression2 = (Expression)astNode;
+				
+				List<LiveVariableDefinition> variables = extractVariableFromExpression(expression, manager, startLocation, unitRecorder, node);
+				for (LiveVariableDefinition variable : variables) {
+					recorder.addUseVariable(variable);
+				}
+				NameScope currentScope = manager.getScopeOfLocation(startLocation);
+				NameReferenceCreator referenceCreator = new NameReferenceCreator(manager, true);
+				ExpressionReferenceASTVisitor visitor = new ExpressionReferenceASTVisitor(referenceCreator, unitRecorder, currentScope, true);
+				expression2.accept(visitor);
+				NameReference reference = visitor.getResult();
+				List<LiveVariableDefinition> list = extractVariableFromReference(reference, node);
+				for (LiveVariableDefinition variable1 : list) {
+					recorder.addUseVariable(variable1);
+				}
+			} else if (nodeType == ASTNode.PREFIX_EXPRESSION) {
+				PrefixExpression prefix = (PrefixExpression)astNode;
+				if (prefix.getOperator() == PrefixExpression.Operator.DECREMENT || prefix.getOperator() == PrefixExpression.Operator.INCREMENT) {
+					Expression leftHandSide = prefix.getOperand();
+					
+					NameScope currentScope = manager.getScopeOfLocation(startLocation);
+					NameReferenceCreator referenceCreator = new NameReferenceCreator(manager, true);
+					ExpressionReferenceASTVisitor visitor = new ExpressionReferenceASTVisitor(referenceCreator, unitRecorder, currentScope, true);
+					leftHandSide.accept(visitor);
+					NameReference leftReference = visitor.getResult();
+					if (leftReference.resolveBinding()) {
+						NameDefinition definition = leftReference.getDefinition();
+						
+						visitor.reset();
+						prefix.accept(visitor);
+						NameReference rightReference = visitor.getResult();
+						
+						rightReference.resolveBinding();
+						recorder.addDefVariable(new LiveVariableDefinition(rightReference, definition, node));
+						recorder.addUseVariable(new LiveVariableDefinition(rightReference, definition, node));
 					}
+				}
+			} else if (nodeType == ASTNode.POSTFIX_EXPRESSION) {
+				PostfixExpression postfix = (PostfixExpression)astNode;
+				if (postfix.getOperator() == PostfixExpression.Operator.DECREMENT || postfix.getOperator() == PostfixExpression.Operator.INCREMENT) {
+					Expression leftHandSide = postfix.getOperand();
+					
+					NameScope currentScope = manager.getScopeOfLocation(startLocation);
+					NameReferenceCreator referenceCreator = new NameReferenceCreator(manager, true);
+					ExpressionReferenceASTVisitor visitor = new ExpressionReferenceASTVisitor(referenceCreator, unitRecorder, currentScope, true);
+					leftHandSide.accept(visitor);
+					NameReference leftReference = visitor.getResult();
+					if (leftReference.resolveBinding()) {
+						NameDefinition definition = leftReference.getDefinition();
+						
+						visitor.reset();
+						postfix.accept(visitor);
+						NameReference rightReference = visitor.getResult();
+
+						rightReference.resolveBinding();
+						recorder.addDefVariable(new LiveVariableDefinition(rightReference, definition, node));
+						recorder.addUseVariable(new LiveVariableDefinition(rightReference, definition, node));
+					}
+				}
+			} else if (nodeType == ASTNode.INFIX_EXPRESSION) {
+				InfixExpression expression = (InfixExpression)astNode;
+				Expression infix = (Expression)expression;
+				List<LiveVariableDefinition> list = extractVariableFromExpression(infix, manager, startLocation, unitRecorder, node);
+				for (LiveVariableDefinition variable : list) {
+					recorder.addUseVariable(variable);
+				}
+			} else if (nodeType == ASTNode.ENHANCED_FOR_STATEMENT) {
+				EnhancedForStatement enhancedForStatement = (EnhancedForStatement)astNode;
+				SingleVariableDeclaration parameter = enhancedForStatement.getParameter();
+				Expression expression = enhancedForStatement.getExpression();
+				
+				NameDefinitionVisitor visitor = new NameDefinitionVisitor();
+				NameDefinitionLocationFilter filter = new NameDefinitionLocationFilter(startLocation, endLocation);
+				visitor.setFilter(filter);
+				method.accept(visitor);
+				List<NameDefinition> variableList = visitor.getResult();
+				
+				ExecutionPoint prevNode = (ExecutionPoint)currentCFG.adjacentToNode(node).get(0);
+				ILiveVariableRecorder prevRecorder = (ILiveVariableRecorder) prevNode.getFlowInfoRecorder();
+
+				for (NameDefinition variable : variableList) {
+					if (variable.getSimpleName().equals(parameter.getName().getIdentifier())) {
+						NameScope currentScope = manager.getScopeOfLocation(startLocation);
+						NameReferenceCreator referenceCreator = new NameReferenceCreator(manager, true);
+						ExpressionReferenceASTVisitor referenceVisitor = new ExpressionReferenceASTVisitor(referenceCreator, unitRecorder, currentScope, true);
+						expression.accept(referenceVisitor);
+						NameReference valueReference = referenceVisitor.getResult();
+						
+						valueReference.resolveBinding();
+						prevRecorder.addDefVariable(new LiveVariableDefinition(valueReference, variable, node));
+						List<LiveVariableDefinition> list = extractVariableFromReference(valueReference, node);
+						for (LiveVariableDefinition variable1 : list) {
+							prevRecorder.addUseVariable(variable1);
+						}
+						break;
+					}
+				}
+			} else if (nodeType == ASTNode.FOR_STATEMENT) {
+				ForStatement forStatement = (ForStatement)astNode;
+				Expression expression = forStatement.getExpression();
+				ExecutionPoint prevNode = (ExecutionPoint)currentCFG.adjacentToNode(node).get(0);
+				ILiveVariableRecorder prevRecorder = (ILiveVariableRecorder) prevNode.getFlowInfoRecorder();
+				List<LiveVariableDefinition> list = extractVariableFromExpression(expression, manager, startLocation, unitRecorder, node);
+				for (LiveVariableDefinition variable : list) {
+					prevRecorder.addUseVariable(variable);
 				}
 			} else if (nodeType == ASTNode.RETURN_STATEMENT) {
 				ReturnStatement statement = (ReturnStatement)astNode;
 				Expression expression = statement.getExpression();
-				
-				NameReference reference = extractNameReferenceFromExpression(expression, manager, unitRecorder, startLocation);
-				List<String> variables = extractVariablesFromNameReference(reference);
-				for (String variable : variables) {
-					recorder.addUseVariable(new LiveVariableDefinition(variable));
+				List<LiveVariableDefinition> list = extractVariableFromExpression(expression, manager, startLocation, unitRecorder, node);
+				for (LiveVariableDefinition variable : list) {
+					recorder.addUseVariable(variable);
 				}
-			} else if (nodeType == ASTNode.ENHANCED_FOR_STATEMENT) {
-				EnhancedForStatement statement = (EnhancedForStatement)astNode;
-				Expression expression = statement.getExpression();
-				SingleVariableDeclaration declaration = statement.getParameter();
-				
-				NameReference reference = extractNameReferenceFromExpression(expression, manager, unitRecorder, startLocation);
-				GraphNode forPredicate = (currentCFG.adjacentToNode(node)).get(0);
-				ExecutionPoint executionPoint = (ExecutionPoint)forPredicate;
-				recorder = (ILiveVariableRecorder)executionPoint.getFlowInfoRecorder();
-				recorder.addUseVariable(new LiveVariableDefinition(reference.getName()));
-				
-				recorder.addDefVariable(new LiveVariableDefinition(declaration.getName().toString()));
-			} else if (nodeType == ASTNode.INFIX_EXPRESSION) {
-				InfixExpression infixExpression = (InfixExpression)astNode;
-				List<String> Vars = extractVariableFromInfixExpression(infixExpression);
-				for(String Var : Vars) {
-					recorder.addUseVariable(new LiveVariableDefinition(Var));
-				}
-			} else if (nodeType == ASTNode.PREFIX_EXPRESSION) {
-				PrefixExpression expression = (PrefixExpression)astNode;
-				Expression var = expression.getOperand();
-				recorder.addDefVariable(new LiveVariableDefinition(var.toString()));
-				recorder.addUseVariable(new LiveVariableDefinition(var.toString()));
-			} else if (nodeType == ASTNode.POSTFIX_EXPRESSION) {
-				PostfixExpression expression = (PostfixExpression)astNode;
-				Expression var = expression.getOperand();
-				recorder.addDefVariable(new LiveVariableDefinition(var.toString()));
-				recorder.addUseVariable(new LiveVariableDefinition(var.toString()));
-			} else if (nodeType == ASTNode.VARIABLE_DECLARATION_EXPRESSION) {
-				VariableDeclarationExpression expression = (VariableDeclarationExpression)astNode;
-				extractFragment(recorder, expression.fragments(), startLocation, manager, unitRecorder);
-			} else if (nodeType == ASTNode.VARIABLE_DECLARATION_FRAGMENT) {
-				VariableDeclarationFragment fragment = (VariableDeclarationFragment)astNode;
-				List<VariableDeclarationFragment> fragments = new ArrayList<VariableDeclarationFragment>();
-				fragments.add(fragment);
-				extractFragment(recorder, fragments, startLocation, manager, unitRecorder);
-			} else if (nodeType == ASTNode.VARIABLE_DECLARATION_STATEMENT) {
-				VariableDeclarationStatement statement = (VariableDeclarationStatement)astNode;
-				extractFragment(recorder, statement.fragments(), startLocation, manager, unitRecorder);
 			}
 		}
-	}
-
-	// output formatted Def and Use variable for all execution point
-	public static String outPutDefAndUseVariable(ControlFlowGraph controlFlowGraph) {
-		List<GraphNode> nodeList = controlFlowGraph.getAllNodes();
-		String output = "";
-		
-		for (GraphNode node : nodeList) {
-			if (node instanceof ExecutionPoint) {
-				ExecutionPoint graphNode = (ExecutionPoint)node;
-				LiveVariableRecorder recorder = (LiveVariableRecorder)graphNode.getFlowInfoRecorder();
-				
-				List<LiveVariableDefinition> DefList = recorder.getDefVariableList();
-				List<LiveVariableDefinition> UseList = recorder.getUseVariableList();
-				
-				output += graphNode.toFullString() + "\n";
-				output += "Def : "; 
-				for (LiveVariableDefinition definition : DefList) {
-					output += definition.getVariable() + " ";
-				}
-				output += "\n";
-				
-				output += "Use : ";
-				for (LiveVariableDefinition definition : UseList) {
-					output += definition.getVariable() + " ";
-				}
-				output += "\n";
-			}
-		}
-		
-		return output;
 	}
 	
-	// output formatted LiveIn and LiveOut variable for all execution point
-	public static String outPutLiveInAndOutVariable(ControlFlowGraph controlFlowGraph) {
-		List<GraphNode> nodeList = controlFlowGraph.getAllNodes();
-		String output = "";
+	public static NameDefinition extractLeftValueInReference(NameReference reference) {
+		if (!reference.isGroupReference()) return reference.getDefinition();
+		NameReferenceGroup group = (NameReferenceGroup)reference;
+		NameReferenceGroupKind groupKind = group.getGroupKind();
+		List<NameReference> sublist = group.getSubReferenceList();
 		
-		for (GraphNode node : nodeList) {
-			if (node instanceof ExecutionPoint) {
-				ExecutionPoint graphNode = (ExecutionPoint)node;
-				LiveVariableRecorder recorder = (LiveVariableRecorder)graphNode.getFlowInfoRecorder();
-				
-				List<LiveVariableDefinition> LiveInList = recorder.getLiveInVariableList();
-				List<LiveVariableDefinition> LiveOutList = recorder.getLiveOutVariableList();
-				
-				output += graphNode.toFullString() + "\n";
-				output += "LiveIn : "; 
-				for (LiveVariableDefinition definition : LiveInList) {
-					output += definition.getVariable() + " ";
-				}
-				output += "\n";
-				
-				output += "LiveOut : ";
-				for (LiveVariableDefinition definition : LiveOutList) {
-					output += definition.getVariable() + " ";
-				}
-				output += "\n";
+		if (groupKind == NameReferenceGroupKind.NRGK_ARRAY_ACCESS) {
+			// Find the array name in this reference!
+			NameReference firstSubReference = sublist.get(0);
+			while (firstSubReference.isGroupReference()) {
+				sublist = firstSubReference.getSubReferenceList();
+				firstSubReference = sublist.get(0);
 			}
+			return firstSubReference.getDefinition();
+		} else if (groupKind == NameReferenceGroupKind.NRGK_FIELD_ACCESS) {
+			return sublist.get(1).getDefinition();
+		} else if (groupKind == NameReferenceGroupKind.NRGK_METHOD_INVOCATION ||
+				groupKind == NameReferenceGroupKind.NRGK_SUPER_METHOD_INVOCATION) {
+			for (NameReference subreference : sublist) {
+				if (subreference.getReferenceKind() == NameReferenceKind.NRK_METHOD) {
+					return subreference.getDefinition();
+				}
+			}
+		} else if (groupKind == NameReferenceGroupKind.NRGK_SUPER_FIELD_ACCESS) {
+			NameReference firstReference = sublist.get(0);
+			if (firstReference.getReferenceKind() == NameReferenceKind.NRK_TYPE) 
+				return sublist.get(1).getDefinition();
+			else return firstReference.getDefinition();
+		} else if (groupKind == NameReferenceGroupKind.NRGK_THIS_EXPRESSION) {
+			return sublist.get(0).getDefinition();
+		} else if (groupKind == NameReferenceGroupKind.NRGK_QUALIFIED_NAME) {
+			return group.getDefinition();
 		}
-		
-		return output;
+		return null;
 	}
 	
-	public static String outPutAllInfo(ControlFlowGraph controlFlowGraph) {
-		List<GraphNode> nodeList = controlFlowGraph.getAllNodes();
-		String output = "";
-		
-		for (GraphNode node : nodeList) {
-			if (node instanceof ExecutionPoint) {
-				ExecutionPoint graphNode = (ExecutionPoint)node;
-				LiveVariableRecorder recorder = (LiveVariableRecorder)graphNode.getFlowInfoRecorder();
-				
-				List<LiveVariableDefinition> LiveInList = recorder.getLiveInVariableList();
-				List<LiveVariableDefinition> LiveOutList = recorder.getLiveOutVariableList();
-				List<LiveVariableDefinition> DefList = recorder.getDefVariableList();
-				List<LiveVariableDefinition> UseList = recorder.getUseVariableList();
-				
-				output += graphNode.toFullString() + "\n";
-				
-				output += "Def :     ";
-				for (LiveVariableDefinition definition : DefList) {
-					output += definition.getVariable() + " ";
-				}
-				output += "\n";
-				
-				output += "Use :     ";
-				for (LiveVariableDefinition definition : UseList) {
-					output += definition.getVariable() + " ";
-				}
-				output += "\n";
-				
-				output += "LiveIn :  "; 
-				for (LiveVariableDefinition definition : LiveInList) {
-					output += definition.getVariable() + " ";
-				}
-				output += "\n";
-				
-				output += "LiveOut : ";
-				for (LiveVariableDefinition definition : LiveOutList) {
-					output += definition.getVariable() + " ";
-				}
-				output += "\n";
-			}
-		}
-		
-		return output;
-	}
-	
-	static List<String> extractVariablesFromNameReference(NameReference reference) {
-		List<String> variables = new ArrayList<String>();
-		if (reference.isGroupReference()) {
-			List<NameReference> subList = reference.getSubReferenceList();
-			for (NameReference subReference : subList) {
-				if (subReference.isGroupReference()) {
-					variables.addAll(extractVariablesFromNameReference(subReference));
+	public static List<NameReference> extractGroupReference(NameReference groupReference) {
+		List<NameReference> references = new ArrayList<NameReference>();
+		if (groupReference.isGroupReference()) {
+			List<NameReference> group = groupReference.getReferencesAtLeaf();
+			for (NameReference reference : group) {
+				if (reference.isLiteralReference() || reference.isNullReference()
+						|| reference.isTypeReference() || reference.isMethodReference()) {
+					
 				} else {
-					NameReferenceKind kind = subReference.getReferenceKind();
-					if (kind == NameReferenceKind.NRK_VARIABLE) {
-						variables.add(subReference.getName());
-					} else if (kind == NameReferenceKind.NRK_METHOD) {
-						List<NameReference> leafs = subReference.getReferencesAtLeaf();
-						for (NameReference leaf : leafs) {
-							if (leaf.getReferenceKind() == NameReferenceKind.NRK_VARIABLE) {
-								variables.add(leaf.getName());
-							}
-						}
-					}
+					references.add(reference);
 				}
 			}
 		} else {
-			if (reference.getReferenceKind() == NameReferenceKind.NRK_VARIABLE) {
-				variables.add(reference.getName());
+			if (groupReference.isLiteralReference() || groupReference.isMethodReference()
+					|| groupReference.isNullReference() || groupReference.isTypeReference()) {
+				
+			} else {
+				references.add(groupReference);
 			}
 		}
-		return variables;
+		return references;
 	}
 	
-	static NameReference extractNameReferenceFromExpression(Expression expression, NameTableManager manager, CompilationUnitRecorder unitRecorder, SourceCodeLocation startLocation) {
+	public static List<LiveVariableDefinition> extractVariableFromExpression(Expression expression, NameTableManager manager,
+			SourceCodeLocation startLocation, CompilationUnitRecorder unitRecorder, ExecutionPoint node) {
+		List<LiveVariableDefinition> list = new ArrayList<LiveVariableDefinition>();
+		if (expression == null)
+			return list;
 		NameScope currentScope = manager.getScopeOfLocation(startLocation);
 		NameReferenceCreator referenceCreator = new NameReferenceCreator(manager, true);
 		ExpressionReferenceASTVisitor visitor = new ExpressionReferenceASTVisitor(referenceCreator, unitRecorder, currentScope, true);
 		expression.accept(visitor);
 		NameReference reference = visitor.getResult();
-		return reference;
-	}
-	
-	static boolean isContain(List<LiveVariableDefinition> list, LiveVariableDefinition definition) {
-		for (LiveVariableDefinition definition2 : list) {
-			if (definition.isEqual(definition2))
-				return true;
-		}
-		return false;
-	}
-	
-	static List<String> extractVariableFromInfixExpression(InfixExpression expression) {
-		List<String> vars = new ArrayList<String>();
-		Expression leftSide = expression.getLeftOperand();
-		Expression rightSide = expression.getRightOperand();
-		
-		if (!isLiteral(leftSide) && leftSide.getNodeType() != ASTNode.SIMPLE_NAME) {
-			int type = leftSide.getNodeType();
-			if (type == ASTNode.INFIX_EXPRESSION) {
-				InfixExpression leftExpression = (InfixExpression)leftSide;
-				vars.addAll(extractVariableFromInfixExpression(leftExpression));
+		List<NameReference> references = extractGroupReference(reference);
+		for (NameReference reference2 : references) {
+			if (reference2.resolveBinding()) {
+				list.add(new LiveVariableDefinition(reference2, reference2.getDefinition(), node));
 			}
-		} else if (!isLiteral(leftSide) && leftSide.getNodeType() == ASTNode.SIMPLE_NAME) {
-			vars.add(leftSide.toString());
 		}
-		
-		if (!isLiteral(rightSide) && rightSide.getNodeType() != ASTNode.SIMPLE_NAME) {
-			int type = rightSide.getNodeType();
-			if (type == ASTNode.INFIX_EXPRESSION) {
-				InfixExpression rightExpression = (InfixExpression)rightSide;
-				vars.addAll(extractVariableFromInfixExpression(rightExpression));
-			}
-		} else if (!isLiteral(rightSide) && rightSide.getNodeType() == ASTNode.SIMPLE_NAME) {
-			vars.add(rightSide.toString());
-		}
-		
-		return vars;
+		return list;
 	}
-	
-	static void extractFragment(ILiveVariableRecorder recorder, List<VariableDeclarationFragment> fragments,
-			SourceCodeLocation startLocation, NameTableManager manager, CompilationUnitRecorder unitRecorder) {
-		for (VariableDeclarationFragment fragment : fragments) {
-			SimpleName variable = fragment.getName();
-			Expression expression = fragment.getInitializer();
-			if (expression != null) {
-				recorder.addDefVariable(new LiveVariableDefinition(variable.getIdentifier()));
-				
-				NameScope currentScope = manager.getScopeOfLocation(startLocation);
-				NameReferenceCreator referenceCreator = new NameReferenceCreator(manager, true);
-				ExpressionReferenceASTVisitor visitor = new ExpressionReferenceASTVisitor(referenceCreator, unitRecorder, currentScope, true);
-				expression.accept(visitor);
-				NameReference reference = visitor.getResult();
-				
-				if (reference.isGroupReference()) {
-					List<NameReference> references = reference.getSubReferenceList();
-					for (NameReference value : references) {
-						if (!value.isLiteralReference() && !value.isMethodReference()
-								&& !value.isNullReference() && !value.isTypeReference()) {
-							recorder.addUseVariable(new LiveVariableDefinition(value.getName()));
-						}
-					}
-				} else {
-					if (!reference.isLiteralReference()) {
-						recorder.addUseVariable(new LiveVariableDefinition(reference.getName()));
-					}
+
+	public static LiveVariableDefinition extractVariableFromFragment(VariableDeclarationFragment fragment, NameTableManager manager,
+			SourceCodeLocation startLocation, CompilationUnitRecorder unitRecorder, ExecutionPoint node) {
+		LiveVariableDefinition variableDefinition = null;
+		NameScope currentScope = manager.getScopeOfLocation(startLocation);
+		NameReferenceCreator referenceCreator = new NameReferenceCreator(manager, true);
+		ExpressionReferenceASTVisitor visitor = new ExpressionReferenceASTVisitor(referenceCreator, unitRecorder, currentScope, true);
+
+		fragment.accept(visitor);
+		NameReference reference = visitor.getResult();
+		List<NameReference> list = reference.getReferencesAtLeaf();
+		System.out.println(list);
+		for (NameReference nameReference : list) {
+			System.out.println("reference : " + nameReference.getName());
+			System.out.println("name : " + fragment.getName());
+			if (nameReference.getName().equals(fragment.getName().toString())) {
+				if (nameReference.resolveBinding()) {
+					variableDefinition = new LiveVariableDefinition(nameReference, nameReference.getDefinition(), node);
+					return variableDefinition;
 				}
 			}
 		}
-	}
-	static boolean isLiteral(Expression expression) {
-		int type = expression.getNodeType();
-		if (type == ASTNode.BOOLEAN_LITERAL || type == ASTNode.CHARACTER_LITERAL
-				|| type == ASTNode.NULL_LITERAL || type == ASTNode.NUMBER_LITERAL
-				|| type == ASTNode.STRING_LITERAL || type == ASTNode.TYPE_LITERAL)
-			return true;
-		return false;
-	}
-	static void cout(List<LiveVariableDefinition> list) {
-		for (LiveVariableDefinition definition : list) {
-			System.out.print(definition.getVariable()+ " ");
-		}
-		System.out.print("\n");
+		return null;
 	}
 	
+	public static List<LiveVariableDefinition> extractVariableFromReference(NameReference valueReference, ExecutionPoint node) {
+		List<LiveVariableDefinition> varables = new ArrayList<LiveVariableDefinition>();
+		List<NameReference> references = valueReference.getReferencesAtLeaf();
+		for (NameReference reference :references) {
+			if (!reference.isTypeReference() && !reference.isLiteralReference() &&
+					!reference.isMethodReference() && !reference.isNullReference()) {
+				if (reference.resolveBinding()) {
+					NameDefinition definition1 = reference.getDefinition();
+					varables.add(new LiveVariableDefinition(reference, definition1, node));
+				}
+			}
+		}
+		return varables;
 	}
+	
+	public static String outPutAllInfo(ControlFlowGraph controlFlowGraph) {
+		List<GraphNode> nodeList = controlFlowGraph.getAllNodes();
+		String result = "";
+		
+		for (GraphNode node : nodeList) {
+			if (node instanceof ExecutionPoint) {
+				String output = "";
+				ExecutionPoint graphNode = (ExecutionPoint)node;
+				LiveVariableRecorder recorder = (LiveVariableRecorder)graphNode.getFlowInfoRecorder();
+				
+				List<LiveVariableDefinition> LiveInList = recorder.getLiveInVariableList();
+				List<LiveVariableDefinition> LiveOutList = recorder.getLiveOutVariableList();
+				List<LiveVariableDefinition> DefList = recorder.getDefVariableList();
+				List<LiveVariableDefinition> UseList = recorder.getUseVariableList();
+				
+				result += graphNode.toFullString() + "\n";
+				
+				output += "Defined variable  : ";
+				for (LiveVariableDefinition definition : DefList) {
+					NameDefinition definition2 = definition.getDefinition();
+					output += definition2.getFullQualifiedName() + " ";
+				}
+				output += "\n";
+				
+				output += "Used variable     : ";
+				for (LiveVariableDefinition definition : UseList) {
+					NameDefinition definition2 = definition.getDefinition();
+					output += definition2.getFullQualifiedName() + " ";
+				}
+				output += "\n";
+				
+				output += "Variables liveIn  : "; 
+				for (LiveVariableDefinition definition : LiveInList) {
+					NameDefinition definition2 = definition.getDefinition();
+					output += definition2.getFullQualifiedName() + " ";
+				}
+				output += "\n";
+				
+				output += "Variables liveOut : ";
+				for (LiveVariableDefinition definition : LiveOutList) {
+					NameDefinition definition2 = definition.getDefinition();
+					output += definition2.getFullQualifiedName() + " ";
+				}
+				output += "\n";
+				
+				graphNode.setLabel("\n" + output + "\n");
+				result += graphNode.getLabel();
+			}
+		}
+		
+		return result;
+	}
+}

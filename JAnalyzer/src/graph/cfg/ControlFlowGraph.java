@@ -280,7 +280,92 @@ public class ControlFlowGraph extends AbstractGraph implements CFGNode {
 			}
 		}
 
-		output.println("};");
+		output.println("}");
+		output.println();
+		output.flush();
+	}
+	
+	public void writeLiveVariablesToFile(PrintWriter output) throws IOException {
+		final int MAX_LABEL_LEN = 300;
+		
+		String graphId = GraphUtil.getLegalToken(getId());
+		output.println("digraph " + graphId + " {");
+		for (GraphNode currentNode : nodes) {
+			if (nodes instanceof ExecutionPoint) {
+				System.out.println(((ExecutionPoint) currentNode).getLabel());
+			}
+			CFGNode node = (CFGNode)currentNode;
+			
+			String label = node.getDescription();
+			if (label == null || label.trim().equals("")) label = node.getLabel();
+			
+			String nodeId = "node" + GraphUtil.getLegalToken(node.getId());
+			String nodeShape = "box";
+			// Set the special id and shape for start, normal and abnormal end, predicate and other virtual nodes
+			if (node.isAbnormalEnd()) {
+				nodeId = methodName + "_ABNORMAL_END";
+				label = nodeId + label;
+				nodeShape = "tripleoctagon";
+			} else if (node.isNormalEnd()) {
+				nodeId = methodName + "_END";
+				label = nodeId + label;
+				nodeShape = "octagon";
+			} else if (node.isStart()) {
+				nodeId = methodName + "_START";
+				label = nodeId + label;
+				nodeShape = "octagon";
+			} else if (node.isVirtual()) {
+				nodeShape = "hexagon";
+			} else if (node.isPredicate()) {
+				nodeShape = "diamond";
+			}
+			
+			if (node instanceof ExecutionPoint) {
+				ExecutionPoint graphNode = (ExecutionPoint)node;
+				label += graphNode.getLabel();
+			}
+			
+			if (label.length() > MAX_LABEL_LEN) {
+				label = label.substring(0, MAX_LABEL_LEN) + "...";
+			}
+			label = label.replace('\"', '\'');
+			label = label.replace("\r", "");
+			output.println("    " + nodeId + "[label = \"[" + node.getId() + "]" + label + "\", shape = " + nodeShape + "]");
+		}
+		for (GraphEdge edge : edges) {
+			String label = edge.getLabel();
+			CFGNode startNode = (CFGNode)edge.getStartNode();
+			CFGNode endNode = (CFGNode)edge.getEndNode();
+			
+			String startNodeId = "node" + GraphUtil.getLegalToken(startNode.getId());
+			String endNodeId = "node" + GraphUtil.getLegalToken(endNode.getId());
+			
+			// Set special id for start, normal and abnormal end nodes. These setting must be consistent with
+			// the setting in the above loop for the nodes of the CFG
+			if (startNode.isAbnormalEnd()) {
+				startNodeId = methodName + "_ABNORMAL_END";
+			} else if (startNode.isNormalEnd()) {
+				startNodeId = methodName + "_END";
+			} else if (startNode.isStart()) {
+				startNodeId = methodName + "_START";
+			}
+			
+			if (endNode.isAbnormalEnd()) {
+				endNodeId = methodName + "_ABNORMAL_END";
+			} else if (endNode.isNormalEnd()) {
+				endNodeId = methodName + "_END";
+			} else if (endNode.isStart()) {
+				endNodeId = methodName + "_START";
+			}
+
+			if (label != null) {
+				output.println("    " + startNodeId + "->" + endNodeId + "[label = \"" + label + "\"]");
+			} else {
+				output.println("    " + startNodeId + "->" + endNodeId);
+			}
+		}
+
+		output.println("}");
 		output.println();
 		output.flush();
 	}
@@ -412,7 +497,7 @@ public class ControlFlowGraph extends AbstractGraph implements CFGNode {
 			}
 		}
 
-		output.println("};");
+		output.println("}");
 		output.println();
 		output.flush();
 	}
